@@ -1,0 +1,26 @@
+# Agent orchestration and LLM
+langgraph>=1.2,<2.0
+langchain-openai>=1.0,<2.0
+openai>=2.0,<3.0
+
+# Backend and configuration
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.34,<1.0
+pydantic-settings>=2.7,<3.0
+python-multipart>=0.0.20
+
+# Database
+sqlalchemy>=2.0,<3.0
+psycopg[binary]>=3.2,<4.0
+pgvector>=0.4,<1.0
+
+# Cache
+redis>=6.0,<8.0
+
+# Data analytics
+pandas>=2.2,<4.0
+numpy>=2.0,<3.0
+
+# Reliability
+tenacity>=9.0,<10.0
+structlog>=25.0,<26.0
