@@ -1,31 +1,27 @@
-
 from langgraph.graph import END, START, StateGraph
 
+from src.agents.research_agent import ResearchAgent
 from src.orchestration.routing import supervisor_node
 from src.orchestration.state import AgentState
 
 
 def research_agent_node(state: AgentState) -> dict:
-    """Mock research agent."""
+    """Execute the functional ResearchAgent."""
+
+    agent = ResearchAgent()
+    result = agent.run(state["user_task"])
+
+    summary = result["output"]["summary"]
 
     return {
         "current_agent": "ResearchAgent",
-        "agent_results": [
-            {
-                "agent_name": "ResearchAgent",
-                "status": "completed",
-                "output": {
-                    "summary": (
-                        f"Research completed for: {state['user_task']}"
-                    )
-                },
-                "error": None,
-            }
-        ],
-        "workflow_status": "completed",
-        "final_response": (
-            f"ResearchAgent completed the task: {state['user_task']}"
+        "agent_results": [result],
+        "workflow_status": (
+            "completed"
+            if result["status"] == "completed"
+            else "needs_review"
         ),
+        "final_response": summary,
     }
 
 
