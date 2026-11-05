@@ -90,3 +90,31 @@ class VerificationOutput(StructuredOutput):
     checks: list[VerificationCheck] = Field(min_length=1)
     summary: str = Field(min_length=1)
     warnings: list[str] = Field(default_factory=list)
+
+
+class ReportFinding(StructuredOutput):
+    """One finding included in an executive report."""
+
+    title: str = Field(min_length=1)
+    detail: str = Field(min_length=1)
+    source_agent: Literal[
+        "ResearchAgent",
+        "SQLAnalystAgent",
+        "PythonAnalystAgent",
+    ]
+
+
+class ExecutiveReportOutput(StructuredOutput):
+    """Structured executive report generated from verified agent outputs."""
+
+    agent_name: Literal["ReportGeneratorAgent"] = "ReportGeneratorAgent"
+    status: Literal["completed", "needs_review"]
+
+    report_title: str = Field(min_length=1)
+    executive_summary: str = Field(min_length=1)
+    key_findings: list[ReportFinding] = Field(min_length=1)
+    recommendations: list[str] = Field(min_length=1)
+    limitations: list[str] = Field(default_factory=list)
+
+    verification_status: Literal["passed", "needs_review"]
+    disclaimer: str = Field(min_length=1)

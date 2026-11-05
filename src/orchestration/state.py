@@ -30,6 +30,9 @@ class AgentState(TypedDict, total=False):
     agent_results: list[AgentResult]
     verification_result: AgentResult
 
+    # Final executive report.
+    report_result: AgentResult
+
     workflow_status: Literal[
         "pending",
         "running",

@@ -1,7 +1,10 @@
 
 import pytest
 
-from src.orchestration.graph import agent_graph
+from src.orchestration.graph import (
+    agent_graph,
+    route_after_verification,
+)
 from src.orchestration.routing import supervisor_node
 
 SAMPLE_RECORDS = [
@@ -63,13 +66,17 @@ def test_agent_graph_executes_expected_agent(
 
     result = agent_graph.invoke(state)
 
-    assert result["current_agent"] == expected_agent
+    # The final node is the Report Generator.
+    assert result["current_agent"] == "ReportGeneratorAgent"
+
     assert result["workflow_status"] == expected_status
 
+    # Specialist results remain separate from report results.
     assert len(result["agent_results"]) == 1
     assert result["agent_results"][0]["agent_name"] == expected_agent
     assert result["agent_results"][0]["status"] == "completed"
 
+    # Independent verification.
     assert result["verification_result"]["agent_name"] == (
         "VerificationAgent"
     )
@@ -84,8 +91,27 @@ def test_agent_graph_executes_expected_agent(
         else "needs_review"
     )
 
+    # Executive report.
+    assert result["report_result"]["agent_name"] == (
+        "ReportGeneratorAgent"
+    )
+    assert result["report_result"]["status"] == expected_status
+
+    report = result["report_result"]["output"]
+
+    assert report["agent_name"] == "ReportGeneratorAgent"
+    assert report["verification_status"] == (
+        "passed"
+        if expected_status == "completed"
+        else "needs_review"
+    )
+
+    assert report["key_findings"]
+    assert report["recommendations"]
+
     assert result["final_response"]
     assert "Verification:" in result["final_response"]
+    assert "EXECUTIVE REPORT:" in result["final_response"]
 
 
 def test_python_analyst_requires_dataset():
@@ -101,6 +127,7 @@ def test_python_analyst_requires_dataset():
     assert result["workflow_status"] == "failed"
     assert result["agent_results"] == []
     assert "verification_result" not in result
+    assert "report_result" not in result
 
     assert any(
         "requires analysis_records" in error
@@ -150,6 +177,8 @@ def test_research_agent_requires_review_for_missing_information():
         for warning in verification["warnings"]
     )
 
+    assert result["report_result"]["status"] == "needs_review"
+
 
 def test_sql_agent_passes_independent_verification():
     result = agent_graph.invoke(
@@ -166,6 +195,8 @@ def test_sql_agent_passes_independent_verification():
     assert verification["status"] == "passed"
     assert verification["warnings"] == []
 
+    assert result["report_result"]["status"] == "completed"
+
 
 def test_verification_summary_is_in_final_response():
     result = agent_graph.invoke(
@@ -180,6 +211,66 @@ def test_verification_summary_is_in_final_response():
     assert "verification passed" in (
         result["final_response"].lower()
     )
+
+
+def test_rejected_verification_stops_report_generation():
+    state = {
+        "workflow_status": "failed",
+        "verification_result": {
+            "agent_name": "VerificationAgent",
+            "status": "failed",
+            "output": {
+                "agent_name": "VerificationAgent",
+                "status": "rejected",
+                "verified_agent": "SQLAnalystAgent",
+                "checks": [],
+                "summary": "Unsafe SQL detected.",
+                "warnings": [],
+            },
+            "error": None,
+        },
+    }
+
+    assert route_after_verification(state) == "end"
+
+
+@pytest.mark.parametrize(
+    "verification_status",
+    ["passed", "needs_review"],
+)
+def test_approved_verification_routes_to_report_generator(
+    verification_status,
+):
+    agent_status = (
+        "completed"
+        if verification_status == "passed"
+        else "needs_review"
+    )
+
+    state = {
+        "workflow_status": agent_status,
+        "verification_result": {
+            "agent_name": "VerificationAgent",
+            "status": agent_status,
+            "output": {
+                "agent_name": "VerificationAgent",
+                "status": verification_status,
+                "verified_agent": "SQLAnalystAgent",
+                "checks": [],
+                "summary": "Verification completed.",
+                "warnings": [],
+            },
+            "error": None,
+        },
+    }
+
+    assert route_after_verification(state) == "report_generator"
+
+
+def test_missing_verification_stops_report_generation():
+    assert route_after_verification(
+        {"workflow_status": "failed"}
+    ) == "end"
 
 
 def test_supervisor_rejects_empty_task():
