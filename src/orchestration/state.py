@@ -10,12 +10,14 @@ class AgentResult(TypedDict):
 
 
 class AgentState(TypedDict, total=False):
-    """
-    Shared state passed between agents in the LangGraph workflow.
-    """
+    """Shared state passed between agents in the LangGraph workflow."""
 
     task_id: str
     user_task: str
+
+    # Database context supplied to the SQL Analyst Agent.
+    database_schema: str
+    allowed_tables: list[str]
 
     current_agent: str
     next_agent: str

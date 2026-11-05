@@ -1,8 +1,23 @@
+
 from langgraph.graph import END, START, StateGraph
 
 from src.agents.research_agent import ResearchAgent
+from src.agents.sql_analyst_agent import SQLAnalystAgent
 from src.orchestration.routing import supervisor_node
 from src.orchestration.state import AgentState
+
+
+# Temporary demonstration schema for existing graph tests and
+# development calls that do not yet provide database metadata.
+DEFAULT_DATABASE_SCHEMA = """
+CREATE TABLE customers (
+    id INTEGER PRIMARY KEY,
+    name VARCHAR(100),
+    city VARCHAR(100)
+);
+"""
+
+DEFAULT_ALLOWED_TABLES = ["customers"]
 
 
 def research_agent_node(state: AgentState) -> dict:
@@ -26,26 +41,44 @@ def research_agent_node(state: AgentState) -> dict:
 
 
 def sql_analyst_node(state: AgentState) -> dict:
-    """Mock SQL analyst agent."""
+    """Execute the functional SQL Analyst Agent."""
+
+    agent = SQLAnalystAgent()
+
+    database_schema = state.get(
+        "database_schema",
+        DEFAULT_DATABASE_SCHEMA,
+    )
+
+    allowed_tables = state.get(
+        "allowed_tables",
+        DEFAULT_ALLOWED_TABLES,
+    )
+
+    result = agent.run(
+        business_question=state["user_task"],
+        database_schema=database_schema,
+        allowed_tables=set(allowed_tables),
+    )
+
+    output = result["output"]
+
+    final_response = (
+        f"SQL analysis prepared for: {output['business_question']}\n"
+        f"SQL query: {output['sql_query']}\n"
+        f"Explanation: {output['explanation']}\n"
+        "Note: The query was validated but not executed."
+    )
 
     return {
         "current_agent": "SQLAnalystAgent",
-        "agent_results": [
-            {
-                "agent_name": "SQLAnalystAgent",
-                "status": "completed",
-                "output": {
-                    "summary": (
-                        f"SQL analysis completed for: {state['user_task']}"
-                    )
-                },
-                "error": None,
-            }
-        ],
-        "workflow_status": "completed",
-        "final_response": (
-            f"SQLAnalystAgent completed the task: {state['user_task']}"
+        "agent_results": [result],
+        "workflow_status": (
+            "completed"
+            if result["status"] == "completed"
+            else "needs_review"
         ),
+        "final_response": final_response,
     }
 
 
