@@ -15,9 +15,13 @@ class AgentState(TypedDict, total=False):
     task_id: str
     user_task: str
 
-    # Database context supplied to the SQL Analyst Agent.
+    # Database context for SQL Analyst.
     database_schema: str
     allowed_tables: list[str]
+
+    # Dataset context for Python Analyst.
+    analysis_records: list[dict[str, Any]]
+    analysis_objective: str
 
     current_agent: str
     next_agent: str

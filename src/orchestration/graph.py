@@ -1,14 +1,12 @@
 
 from langgraph.graph import END, START, StateGraph
 
+from src.agents.python_analyst_agent import PythonAnalystAgent
 from src.agents.research_agent import ResearchAgent
 from src.agents.sql_analyst_agent import SQLAnalystAgent
 from src.orchestration.routing import supervisor_node
 from src.orchestration.state import AgentState
 
-
-# Temporary demonstration schema for existing graph tests and
-# development calls that do not yet provide database metadata.
 DEFAULT_DATABASE_SCHEMA = """
 CREATE TABLE customers (
     id INTEGER PRIMARY KEY,
@@ -83,26 +81,54 @@ def sql_analyst_node(state: AgentState) -> dict:
 
 
 def python_analyst_node(state: AgentState) -> dict:
-    """Mock Python analyst agent."""
+    """Execute the functional Pandas-based Python Analyst Agent."""
+
+    records = state.get("analysis_records")
+
+    if not records:
+        return {
+            "current_agent": "PythonAnalystAgent",
+            "agent_results": [],
+            "workflow_status": "failed",
+            "errors": [
+                (
+                    "Python Analyst requires analysis_records. "
+                    "Supply a non-empty dataset."
+                )
+            ],
+        }
+
+    objective = state.get(
+        "analysis_objective",
+        state["user_task"],
+    )
+
+    agent = PythonAnalystAgent()
+
+    result = agent.run(
+        objective=objective,
+        records=records,
+    )
+
+    output = result["output"]
+
+    final_response = (
+        f"Python analysis completed.\n"
+        f"Objective: {output['objective']}\n"
+        f"Summary: {output['analysis_summary']}\n"
+        f"Metrics: {output['key_metrics']}\n"
+        f"Insights: {'; '.join(output['insights'])}"
+    )
 
     return {
         "current_agent": "PythonAnalystAgent",
-        "agent_results": [
-            {
-                "agent_name": "PythonAnalystAgent",
-                "status": "completed",
-                "output": {
-                    "summary": (
-                        f"Python analysis completed for: {state['user_task']}"
-                    )
-                },
-                "error": None,
-            }
-        ],
-        "workflow_status": "completed",
-        "final_response": (
-            f"PythonAnalystAgent completed the task: {state['user_task']}"
+        "agent_results": [result],
+        "workflow_status": (
+            "completed"
+            if result["status"] == "completed"
+            else "needs_review"
         ),
+        "final_response": final_response,
     }
 
 
