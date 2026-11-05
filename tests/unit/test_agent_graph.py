@@ -28,14 +28,30 @@ def test_supervisor_routes_to_expected_agent(task, expected_agent):
 
 
 @pytest.mark.parametrize(
-    ("task", "expected_agent"),
+    ("task", "expected_agent", "expected_status"),
     [
-        ("Research market trends", "ResearchAgent"),
-        ("Analyze quarterly revenue", "SQLAnalystAgent"),
-        ("Calculate average customer churn", "PythonAnalystAgent"),
+        (
+            "Research market trends",
+            "ResearchAgent",
+            "needs_review",
+        ),
+        (
+            "Analyze quarterly revenue",
+            "SQLAnalystAgent",
+            "completed",
+        ),
+        (
+            "Calculate average customer churn",
+            "PythonAnalystAgent",
+            "needs_review",
+        ),
     ],
 )
-def test_agent_graph_executes_expected_agent(task, expected_agent):
+def test_agent_graph_executes_expected_agent(
+    task,
+    expected_agent,
+    expected_status,
+):
     state = {
         "user_task": task,
         "agent_results": [],
@@ -48,10 +64,28 @@ def test_agent_graph_executes_expected_agent(task, expected_agent):
     result = agent_graph.invoke(state)
 
     assert result["current_agent"] == expected_agent
-    assert result["workflow_status"] == "completed"
+    assert result["workflow_status"] == expected_status
+
+    assert len(result["agent_results"]) == 1
     assert result["agent_results"][0]["agent_name"] == expected_agent
     assert result["agent_results"][0]["status"] == "completed"
+
+    assert result["verification_result"]["agent_name"] == (
+        "VerificationAgent"
+    )
+
+    assert result["verification_result"]["output"]["verified_agent"] == (
+        expected_agent
+    )
+
+    assert result["verification_result"]["output"]["status"] == (
+        "passed"
+        if expected_status == "completed"
+        else "needs_review"
+    )
+
     assert result["final_response"]
+    assert "Verification:" in result["final_response"]
 
 
 def test_python_analyst_requires_dataset():
@@ -66,6 +100,8 @@ def test_python_analyst_requires_dataset():
     assert result["current_agent"] == "PythonAnalystAgent"
     assert result["workflow_status"] == "failed"
     assert result["agent_results"] == []
+    assert "verification_result" not in result
+
     assert any(
         "requires analysis_records" in error
         for error in result["errors"]
@@ -84,9 +120,66 @@ def test_python_analyst_returns_calculated_metrics():
 
     output = result["agent_results"][0]["output"]
 
-    assert result["workflow_status"] == "completed"
+    assert result["workflow_status"] == "needs_review"
     assert output["key_metrics"]["mean__monthly_spend"] == 250.0
     assert output["key_metrics"]["mean__churned"] == 0.5
+
+    verification = result["verification_result"]["output"]
+
+    assert verification["status"] == "needs_review"
+    assert "Python analysis reported limitations" in (
+        verification["warnings"][0]
+    )
+
+
+def test_research_agent_requires_review_for_missing_information():
+    result = agent_graph.invoke(
+        {
+            "user_task": "Research market trends",
+            "agent_results": [],
+            "errors": [],
+        }
+    )
+
+    verification = result["verification_result"]["output"]
+
+    assert result["workflow_status"] == "needs_review"
+    assert verification["status"] == "needs_review"
+    assert any(
+        "unresolved missing information" in warning
+        for warning in verification["warnings"]
+    )
+
+
+def test_sql_agent_passes_independent_verification():
+    result = agent_graph.invoke(
+        {
+            "user_task": "Analyze quarterly revenue",
+            "agent_results": [],
+            "errors": [],
+        }
+    )
+
+    verification = result["verification_result"]["output"]
+
+    assert result["workflow_status"] == "completed"
+    assert verification["status"] == "passed"
+    assert verification["warnings"] == []
+
+
+def test_verification_summary_is_in_final_response():
+    result = agent_graph.invoke(
+        {
+            "user_task": "Analyze quarterly revenue",
+            "agent_results": [],
+            "errors": [],
+        }
+    )
+
+    assert "Verification:" in result["final_response"]
+    assert "verification passed" in (
+        result["final_response"].lower()
+    )
 
 
 def test_supervisor_rejects_empty_task():
@@ -108,3 +201,4 @@ def test_agent_graph_routes_empty_task_to_end():
     assert result["workflow_status"] == "failed"
     assert "User task cannot be empty." in result["errors"]
     assert "final_response" not in result
+    assert "verification_result" not in result

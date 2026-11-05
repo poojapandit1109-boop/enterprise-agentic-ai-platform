@@ -4,6 +4,7 @@ from langgraph.graph import END, START, StateGraph
 from src.agents.python_analyst_agent import PythonAnalystAgent
 from src.agents.research_agent import ResearchAgent
 from src.agents.sql_analyst_agent import SQLAnalystAgent
+from src.agents.verification_agent import VerificationAgent
 from src.orchestration.routing import supervisor_node
 from src.orchestration.state import AgentState
 
@@ -113,7 +114,7 @@ def python_analyst_node(state: AgentState) -> dict:
     output = result["output"]
 
     final_response = (
-        f"Python analysis completed.\n"
+        "Python analysis completed.\n"
         f"Objective: {output['objective']}\n"
         f"Summary: {output['analysis_summary']}\n"
         f"Metrics: {output['key_metrics']}\n"
@@ -132,6 +133,64 @@ def python_analyst_node(state: AgentState) -> dict:
     }
 
 
+def verification_node(state: AgentState) -> dict:
+    """Independently verify the most recent specialist-agent result."""
+
+    agent_results = state.get("agent_results", [])
+
+    if not agent_results:
+        return {
+            "workflow_status": "failed",
+            "errors": state.get("errors", [])
+            + ["Verification skipped because no specialist result exists."],
+        }
+
+    specialist_result = agent_results[-1]
+
+    verifier = VerificationAgent()
+    verification_result = verifier.run(specialist_result)
+
+    verification_output = verification_result["output"]
+    verification_status = verification_output["status"]
+
+    workflow_status = {
+        "passed": "completed",
+        "rejected": "failed",
+        "needs_review": "needs_review",
+    }[verification_status]
+
+    existing_response = state.get("final_response", "")
+    verification_summary = (
+        "\n\nVerification: "
+        f"{verification_output['summary']}"
+    )
+
+    warnings = verification_output.get("warnings", [])
+
+    if warnings:
+        warning_text = "\n".join(
+            f"- {warning}" for warning in warnings
+        )
+        verification_summary += (
+            "\nVerification warnings:\n"
+            f"{warning_text}"
+        )
+
+    errors = state.get("errors", [])
+
+    if verification_status == "rejected":
+        errors = errors + [
+            verification_output["summary"]
+        ]
+
+    return {
+        "verification_result": verification_result,
+        "workflow_status": workflow_status,
+        "errors": errors,
+        "final_response": existing_response + verification_summary,
+    }
+
+
 def route_to_agent(state: AgentState) -> str:
     """Select the next graph node based on supervisor routing."""
 
@@ -147,7 +206,7 @@ def route_to_agent(state: AgentState) -> str:
 
 
 def build_agent_graph():
-    """Build and compile the multi-agent LangGraph workflow."""
+    """Build and compile the multi-agent verification workflow."""
 
     workflow = StateGraph(AgentState)
 
@@ -155,6 +214,7 @@ def build_agent_graph():
     workflow.add_node("research", research_agent_node)
     workflow.add_node("sql_analyst", sql_analyst_node)
     workflow.add_node("python_analyst", python_analyst_node)
+    workflow.add_node("verification", verification_node)
 
     workflow.add_edge(START, "supervisor")
 
@@ -169,9 +229,11 @@ def build_agent_graph():
         },
     )
 
-    workflow.add_edge("research", END)
-    workflow.add_edge("sql_analyst", END)
-    workflow.add_edge("python_analyst", END)
+    workflow.add_edge("research", "verification")
+    workflow.add_edge("sql_analyst", "verification")
+    workflow.add_edge("python_analyst", "verification")
+
+    workflow.add_edge("verification", END)
 
     return workflow.compile()
 

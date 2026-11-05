@@ -48,11 +48,8 @@ class SQLAnalysisOutput(StructuredOutput):
     def validate_query_start(cls, value: str) -> str:
         normalized = value.strip().upper()
 
-        if not (
-            normalized.startswith("SELECT ")
-            or normalized.startswith("SELECT\n")
-            or normalized.startswith("WITH ")
-            or normalized.startswith("WITH\n")
+        if not normalized.startswith(
+            ("SELECT ", "SELECT\n", "WITH ", "WITH\n")
         ):
             raise ValueError("Only SELECT or WITH queries are accepted.")
 
@@ -69,3 +66,27 @@ class PythonAnalysisOutput(StructuredOutput):
     key_metrics: dict[str, float]
     insights: list[str] = Field(min_length=1)
     limitations: list[str] = Field(default_factory=list)
+
+
+class VerificationCheck(StructuredOutput):
+    """One validation performed by the Verification Agent."""
+
+    name: str = Field(min_length=1)
+    passed: bool
+    severity: Literal["info", "warning", "critical"]
+    details: str = Field(min_length=1)
+
+
+class VerificationOutput(StructuredOutput):
+    """Structured verification decision for a specialist agent result."""
+
+    agent_name: Literal["VerificationAgent"] = "VerificationAgent"
+    status: Literal["passed", "rejected", "needs_review"]
+    verified_agent: Literal[
+        "ResearchAgent",
+        "SQLAnalystAgent",
+        "PythonAnalystAgent",
+    ]
+    checks: list[VerificationCheck] = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    warnings: list[str] = Field(default_factory=list)

@@ -26,7 +26,9 @@ class AgentState(TypedDict, total=False):
     current_agent: str
     next_agent: str
 
+    # Specialist outputs and independent verification.
     agent_results: list[AgentResult]
+    verification_result: AgentResult
 
     workflow_status: Literal[
         "pending",
