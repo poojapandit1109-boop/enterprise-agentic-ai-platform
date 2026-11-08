@@ -1,16 +1,34 @@
 
+"""Deterministic SQL mock client without external API calls."""
+
+import html
 import json
 import re
 
 from src.llm.base import BaseLLMClient, LLMResponse
 
 
-class SQLMockLLMClient(BaseLLMClient):
-    """
-    Generate deterministic structured SQL output without API calls.
+def _unwrap_untrusted_input(value: str) -> str:
+    """Extract original text from the untrusted-input delimiters."""
 
-    This mock is for development and testing only.
-    """
+    opening_tag = "<UNTRUSTED_INPUT>"
+    closing_tag = "</UNTRUSTED_INPUT>"
+
+    if not value.startswith(opening_tag):
+        raise ValueError("Untrusted input opening tag is missing.")
+
+    if not value.endswith(closing_tag):
+        raise ValueError("Untrusted input closing tag is missing.")
+
+    content = value[
+        len(opening_tag):-len(closing_tag)
+    ].strip()
+
+    return html.unescape(content)
+
+
+class SQLMockLLMClient(BaseLLMClient):
+    """Generate deterministic structured SQL output without API calls."""
 
     def generate(self, prompt: str) -> LLMResponse:
         if not prompt or not prompt.strip():
@@ -33,8 +51,13 @@ class SQLMockLLMClient(BaseLLMClient):
                 "Business question or database schema could not be extracted."
             )
 
-        business_question = question_match.group(1).strip()
-        database_schema = schema_match.group(1).strip()
+        business_question = _unwrap_untrusted_input(
+            question_match.group(1).strip()
+        )
+
+        database_schema = _unwrap_untrusted_input(
+            schema_match.group(1).strip()
+        )
 
         if not business_question or not database_schema:
             raise ValueError(
