@@ -1,3 +1,5 @@
+﻿
+"""LangGraph workflow for the enterprise agentic AI platform."""
 
 from langgraph.graph import END, START, StateGraph
 
@@ -7,6 +9,12 @@ from src.agents.research_agent import ResearchAgent
 from src.agents.sql_analyst_agent import SQLAnalystAgent
 from src.agents.verification_agent import VerificationAgent
 from src.orchestration.routing import supervisor_node
+from src.orchestration.sql_execution import (
+    route_after_sql_tool_execution as sql_execution_router,
+)
+from src.orchestration.sql_execution import (
+    sql_tool_execution_node,
+)
 from src.orchestration.state import AgentState
 
 DEFAULT_DATABASE_SCHEMA = """
@@ -195,7 +203,7 @@ def verification_node(state: AgentState) -> dict:
 
 
 def route_after_verification(state: AgentState) -> str:
-    """Allow only passed or reviewable outputs into report generation."""
+    """Route verified SQL tasks to execution when explicitly enabled."""
 
     verification_result = state.get("verification_result")
 
@@ -220,6 +228,18 @@ def route_after_verification(state: AgentState) -> str:
 
     if state.get("workflow_status") == "failed":
         return "end"
+
+    agent_results = state.get("agent_results", [])
+
+    if (
+        state.get("enable_sql_execution") is True
+        and agent_results
+        and agent_results[-1].get("agent_name") == "SQLAnalystAgent"
+        and agent_results[-1].get("status") == "completed"
+        and verification_status == "passed"
+        and verification_output.get("verified_agent") == "SQLAnalystAgent"
+    ):
+        return "sql_tool_execution"
 
     return "report_generator"
 
@@ -321,6 +341,7 @@ def build_agent_graph():
     workflow.add_node("sql_analyst", sql_analyst_node)
     workflow.add_node("python_analyst", python_analyst_node)
     workflow.add_node("verification", verification_node)
+    workflow.add_node("sql_tool_execution", sql_tool_execution_node)
     workflow.add_node("report_generator", report_generator_node)
 
     workflow.add_edge(START, "supervisor")
@@ -343,6 +364,16 @@ def build_agent_graph():
     workflow.add_conditional_edges(
         "verification",
         route_after_verification,
+        {
+            "sql_tool_execution": "sql_tool_execution",
+            "report_generator": "report_generator",
+            "end": END,
+        },
+    )
+
+    workflow.add_conditional_edges(
+        "sql_tool_execution",
+        sql_execution_router,
         {
             "report_generator": "report_generator",
             "end": END,

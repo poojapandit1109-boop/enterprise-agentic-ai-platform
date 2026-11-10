@@ -19,10 +19,15 @@ class AgentState(TypedDict, total=False):
     database_schema: str
     allowed_tables: list[str]
 
+    # Explicit opt-in for SQL execution.
+    # Defaults to disabled when not supplied.
+    enable_sql_execution: bool
+
     # Dataset context for Python Analyst.
     analysis_records: list[dict[str, Any]]
     analysis_objective: str
 
+    # Agent routing.
     current_agent: str
     next_agent: str
 
@@ -30,9 +35,13 @@ class AgentState(TypedDict, total=False):
     agent_results: list[AgentResult]
     verification_result: AgentResult
 
+    # Results returned by permission-controlled tools.
+    tool_results: list[dict[str, Any]]
+
     # Final executive report.
     report_result: AgentResult
 
+    # Workflow tracking.
     workflow_status: Literal[
         "pending",
         "running",
@@ -42,5 +51,4 @@ class AgentState(TypedDict, total=False):
     ]
 
     errors: list[str]
-
     final_response: str
